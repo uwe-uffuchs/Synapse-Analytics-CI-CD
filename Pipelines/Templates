@@ -1,0 +1,39 @@
+parameters:
+  - name: ServiceConnection
+  - name: ResourceGroupName
+  - name: WorkspaceName
+  - name: OverrideParameters
+  - name: ArtifactDirectory
+  - name: Environment
+
+steps:
+  - task: toggle-triggers-dev@2
+    displayName: 'Disable All Pipeline Triggers'
+    inputs:
+      azureSubscription: ${{ parameters.ServiceConnection }}
+      ResourceGroupName: ${{ parameters.ResourceGroupName }}
+      WorkspaceName: ${{ parameters.WorkspaceName }}
+      ToggleOn: false
+      Triggers: '*'
+  - task: Synapse workspace deployment@2
+    displayName: 'Publish Synapse Artifact (${{ parameters.Environment }})'
+    inputs:
+      operation: 'deploy'
+      TemplateFile: ${{ parameters.ArtifactDirectory }}/TemplateForWorkspace.json
+      ParametersFile: ${{ parameters.ArtifactDirectory }}/TemplateParametersForWorkspace.json
+      azureSubscription: ${{ parameters.ServiceConnection }}
+      ResourceGroupName: ${{ parameters.ResourceGroupName }}
+      TargetWorkspaceName: ${{ parameters.WorkspaceName }}
+      DeleteArtifactsNotInTemplate: true
+      DeployManagedPrivateEndpoints: true
+      OverrideArmParameters: ${{ parameters.OverrideParameters }}
+      Environment: 'prod'
+  - task: toggle-triggers-dev@2
+    displayName: 'Restart triggers'
+    condition: always()
+    inputs:
+      azureSubscription: ${{ parameters.ServiceConnection }}
+      ResourceGroupName: ${{ parameters.ResourceGroupName }}
+      WorkspaceName: ${{ parameters.WorkspaceName }}
+      ToggleOn: true
+      Triggers: '*'
