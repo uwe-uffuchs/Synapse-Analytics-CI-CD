@@ -1,0 +1,83 @@
+trigger:
+- none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  - name: serviceConnectionName
+    value: 'serviceConnectionName'
+  - name: resourceGroupName
+    value: 'resourceGroupName'
+  - name: targetWorkspaceName
+    value: 'targetWorkspaceName'
+  - name: artifactLocation
+    value: 'main'
+
+resources:
+  pipelines:
+  - pipeline: main
+    source: Synapse-Analytics-CI
+
+# Emo this does not work. We work around it in Setup stage.
+# name: $(Resources.Pipeline.main.runName) 
+
+stages:
+  - stage: Setup
+    jobs:
+      - job: Setup
+        steps:
+          - pwsh: |
+              Write-Host "##vso[build.updatebuildnumber]$(Resources.Pipeline.main.runName)"
+            displayName: 'Set Pipeline Name to Build Number'
+  - stage: Deploy_Test
+    # See considerations in the blog post
+    #variables:
+    #  - group: 'Variable Group Name'
+    jobs:
+      - deployment: PublishToTest
+        displayName: 'Publish To Test'
+        continueOnError: false
+        environment: Test
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # See considerations in the blog post
+                #- template: 'Templates/publish-template.yml'
+                #  parameters:
+                #    ServiceConnection: $(ServiceConnectionTest)
+                #    ResourceGroupName: $(Resource Group Name)
+                #    WorkspaceName: $(Workspace Name)
+                #    OverrideParameters: $(Override Parameters)
+                #    ArtifactDirectory: '$(Pipeline.Workspace)\main\main'
+                #    Environment: $(Environment)
+              - task: toggle-triggers-dev@2
+                displayName: 'Disable All Pipeline Triggers'
+                inputs:
+                  azureSubscription: $(serviceConnectionName)
+                  ResourceGroupName: $(resourceGroupName)
+                  WorkspaceName: $(targetWorkspaceName)
+                  ToggleOn: false
+                  Triggers: '*'
+              - task: Synapse workspace deployment@2
+                displayName: 'Publish Synapse Artifact (Test)'
+                inputs:
+                  operation: 'deploy'
+                  TemplateFile: $(Pipeline.Workspace)\$(artifactLocation)\$(artifactLocation)\TemplateForWorkspace.json
+                  ParametersFile: $(Pipeline.Workspace)\$(artifactLocation)\$(artifactLocation)\TemplateParametersForWorkspace.json
+                  azureSubscription: $(serviceConnectionName)
+                  ResourceGroupName: $(resourceGroupName)
+                  TargetWorkspaceName: $(targetWorkspaceName)
+                  DeleteArtifactsNotInTemplate: true
+                  DeployManagedPrivateEndpoints: true
+                  Environment: 'prod'
+              - task: toggle-triggers-dev@2
+                displayName: 'Restart triggers'
+                condition: always()
+                inputs:
+                  azureSubscription: $(serviceConnectionName)
+                  ResourceGroupName: $(resourceGroupName)
+                  WorkspaceName: $(targetWorkspaceName)
+                  ToggleOn: true
+                  Triggers: '*'
