@@ -1,0 +1,103 @@
+trigger:
+- none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  - name: artifactsFolder
+    value: './Synapse Analytics Workspace'
+  - name: serviceConnectionName
+    value: 'serviceConnectionName'
+  - name: targetWorkspaceName
+    value: 'targetWorkspaceName'
+  - name: resourceGroupName
+    value: 'resourceGroupName'
+  - name: publishLocation
+    value: 'main'
+
+# This will increment by 1 each time this pipeline is run. I.e., the first run will be 0.0.0 and the second will be 0.0.1
+# If versionNumber is updated to be 0.1, the counter will restart at 0
+  - name: versionNumber
+    value: '0.0'
+  - name: revisionNumber
+    value: $[counter(variables['versionNumber'],0)]
+
+name: $(versionNumber).$(revisionNumber)
+
+stages:
+    # See considerations in the blog post
+    #variables:
+    #  - group: 'Variable Group Name'
+  - stage: Validate
+    displayName: 'Validate and Publish Artifact'
+    jobs:
+      - job: PublishArtifact
+        displayName: 'Publish Artifact'
+        steps:
+          - task: Synapse workspace deployment@2
+            displayName: 'Validate Synapse Workspace'
+            inputs:
+              operation: 'validate'
+              ArtifactsFolder: $(artifactsFolder)
+              azureSubscription: $(serviceConnectionName)
+              TargetWorkspaceName: $(targetWorkspaceName)
+          - task: CopyFiles@2
+            displayName: 'Copy Files to:  $(Build.ArtifactStagingDirectory)'
+            inputs:
+              Contents: |
+                ExportedArtifacts/*
+                TemplateParametersForWorkspace*.json
+              flattenFolders: true
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          - publish: '$(Build.ArtifactStagingDirectory)'
+            displayName: 'Publish Pipeline Artifact'
+            artifact: $(publishLocation)
+  - stage: Deploy
+    # See considerations in the blog post
+    #variables:
+    #  - group: 'Variable Group Name'
+    displayName: 'Publish to Dev Workspace'
+    jobs:
+      - deployment: DeployToDev
+        displayName: 'Publish To Dev'
+        environment: Development
+        strategy:
+         runOnce:
+           deploy:
+            steps:
+              # See considerations in the blog post
+              #- template: 'Templates/publish-template.yml'
+              #  parameters:
+              #    ServiceConnection: $(ServiceConnectionTest)
+              #    ResourceGroupName: $(Resource Group Name)
+              #    WorkspaceName: $(Workspace Name)
+              #    OverrideParameters: $(Override Parameters)
+              #    ArtifactDirectory: '$(Pipeline.Workspace)\main\main'
+              #    Environment: $(Environment)
+              - task: toggle-triggers-dev@2
+                displayName: 'Stop Triggers'
+                inputs:
+                  azureSubscription: $(serviceConnectionName)
+                  ResourceGroupName: $(resourceGroupName)
+                  WorkspaceName: $(targetWorkspaceName)
+                  ToggleOn: false
+                  Triggers: '*'
+              - task: Synapse workspace deployment@2
+                displayName: 'Publish Synapse Artifact (Dev)'
+                inputs:
+                  TemplateFile: $(Pipeline.Workspace)/$(publishLocation)/TemplateForWorkspace.json
+                  ParametersFile: $(Pipeline.Workspace)/$(publishLocation)/TemplateParametersForWorkspace.json
+                  azureSubscription: $(serviceConnectionName)
+                  ResourceGroupName: $(resourceGroupName)
+                  TargetWorkspaceName: $(targetWorkspaceName)
+                  DeleteArtifactsNotInTemplate: true
+              - task: toggle-triggers-dev@2
+                displayName: 'Restart Triggers'
+                condition: always()
+                inputs:
+                  azureSubscription: $(serviceConnectionName)
+                  ResourceGroupName: $(resourceGroupName)
+                  WorkspaceName: $(targetWorkspaceName)
+                  ToggleOn: false
+                  Triggers: '*'
