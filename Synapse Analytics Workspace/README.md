@@ -11,14 +11,23 @@ This `README.md` serves as an example to guide you in setting up the root folder
 Here is an example of how you might organize your Synapse Analytics repository:
 
 Root
+
 ├── Synapse Analytics Workspace
+
 │ ├── datasets
+
 │ ├── linkedServices
+
 │ ├── notebooks
+
 │ ├── pipelines
+
 │ ├── sparkJobDefinitions
+
 │ ├── sqlScript
+
 │ ├── triggers
+
 │ └── workspace.json
 
 ### Synapse Analytics Workspace
